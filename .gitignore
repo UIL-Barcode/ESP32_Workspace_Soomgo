@@ -15,6 +15,9 @@ software/*.json
 software/*.lic
 software/*.dll
 
+# templates 폴더 내 프로젝트 템플릿 (개인화된 설정이 담길 수 있음)
+templates/default_project
+
 # 기타 OS 찌꺼기 파일
 .DS_Store
 Thumbs.db
