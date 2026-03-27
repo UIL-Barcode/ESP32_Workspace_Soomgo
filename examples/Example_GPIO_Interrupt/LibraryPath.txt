@@ -1,0 +1,1 @@
+C:\esp\v5.5.3\esp-idf\components\esp_driver_gpio\include\driver
