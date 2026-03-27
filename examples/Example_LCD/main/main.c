@@ -29,6 +29,19 @@ static esp_err_t i2c_master_init(void) {
 /* -------------------------------------------------------------------------- */
 /* 2. LCD 제어 함수 (명령어 / 데이터 / 커서 / 문자열)                           */
 /* -------------------------------------------------------------------------- */
+void lcd_send_init_nibble(char nibble) {
+    uint8_t data_t[2];
+    // 상위 4비트 데이터에 설정값 결합
+    char data = (nibble & 0xF0);
+    
+    // 0x0C = Backlight(1), EN(1), RW(0), RS(0)
+    // 0x08 = Backlight(1), EN(0), RW(0), RS(0)
+    data_t[0] = data | 0x0C; // Pulse (EN=1)
+    data_t[1] = data | 0x08; // Hold  (EN=0)
+    
+    i2c_master_write_to_device(I2C_MASTER_NUM, LCD_ADDR, data_t, 2, pdMS_TO_TICKS(100));
+    ets_delay_us(50);
+}
 
 // LCD에 명령어(Command) 전송 (RS = 0)
 void lcd_send_cmd(char cmd) {
@@ -70,23 +83,22 @@ void lcd_send_data(char data) {
 
 // 초기화 시퀀스 (데이터시트 극한 최적화)
 void lcd_init(void) {
-    vTaskDelay(pdMS_TO_TICKS(50)); // 전원 인가 후 대기 (데이터시트: > 40ms)
+    vTaskDelay(pdMS_TO_TICKS(50)); // 전원 인가 안정화 대기
     
-    // 1. 하드웨어 리셋 1단계
-    lcd_send_cmd(0x30);
-    ets_delay_us(4500); // 데이터시트: > 4.1ms (4100us)
+    // 강제 하드웨어 리셋 시퀀스 (반드시 단일 니블로 전송)
+    // 현재 꼬여있는 4-bit 찌꺼기 상태를 강제로 8-bit 모드로 덮어씀
+    lcd_send_init_nibble(0x30); 
+    ets_delay_us(4500);         // > 4.1ms
     
-    // 2. 하드웨어 리셋 2단계
-    lcd_send_cmd(0x30);
-    ets_delay_us(150);  // 데이터시트: > 100us
+    lcd_send_init_nibble(0x30); 
+    ets_delay_us(150);          // > 100us
     
-    // 3. 하드웨어 리셋 3단계
-    lcd_send_cmd(0x30);
-    ets_delay_us(50);   // 데이터시트: > 37us
+    lcd_send_init_nibble(0x30); 
+    ets_delay_us(50);
     
-    // 4. 4-bit 인터페이스 설정
-    lcd_send_cmd(0x20); 
-    ets_delay_us(50);   // 데이터시트: > 37us
+    // 8-bit 모드에서 4-bit 모드로 전환 명령
+    lcd_send_init_nibble(0x20); 
+    ets_delay_us(50);
     
     // 5. 디스플레이 설정 (이하 일반 명령어는 모두 37us 소요)
     lcd_send_cmd(0x28); // 2 Lines, 5x8 Matrix
