@@ -10,7 +10,8 @@
 #include "rom/ets_sys.h"
 #include <string.h> // strcmp, strcpy 사용을 위해 필요
 #include "esp_adc/adc_oneshot.h"
-
+#include "esp_timer.h" // 정밀 타이머 사용을 위한 필수 헤더
+#include "rom/ets_sys.h" // esp_rom_delay_us 사용을 위해 필요
 
 
 #define I2C_MASTER_NUM      I2C_NUM_0
@@ -19,6 +20,8 @@
 #define I2C_MASTER_FREQ_HZ  50000
 #define LCD_ADDR            0x27  // 스캐너로 확인한 주소 입력
 
+#define TRIG_PIN 14 //초음파 센서 트리거 핀
+#define ECHO_PIN 27 //초음파 센서 에코 핀 (1k/2k 전압 변환 회로로 연결)
 
 /* -------------------------------------------------------------------------- */
 /* 1. I2C 하드웨어 초기화                                                     */
@@ -285,6 +288,93 @@ void adc_init(void) {
 }
 
 
+// 초음파 센서 GPIO 초기화 함수
+void hcsr04_init(void) {
+    gpio_config_t trig_conf = {
+        .pin_bit_mask = (1ULL << TRIG_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = 0,
+        .pull_down_en = 0,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&trig_conf);
+
+    gpio_config_t echo_conf = {
+        .pin_bit_mask = (1ULL << ECHO_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = 0,
+        .pull_down_en = 0,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&echo_conf);
+    
+    gpio_set_level(TRIG_PIN, 0); // 평상시 TRIG는 Low 유지
+}
+
+// 거리 측정 함수 (cm 단위 반환)
+float get_distance(void) {
+    // 1. 센서에 10us 동안 High 신호를 주어 초음파 발사 명령 (Trigger)
+    gpio_set_level(TRIG_PIN, 1);
+    esp_rom_delay_us(10);
+    gpio_set_level(TRIG_PIN, 0);
+
+    // 2. Timeout 설정 (허공을 향해 쏘면 무한정 대기하는 버그 방지용)
+    int64_t start_time = esp_timer_get_time();
+    int64_t timeout = start_time + 30000; // 30ms 타임아웃 (약 5미터 왕복 시간)
+
+    // 3. ECHO 핀이 High가 될 때까지(소리가 발사될 때까지) 대기
+    while(gpio_get_level(ECHO_PIN) == 0 && esp_timer_get_time() < timeout) {}
+    int64_t echo_start = esp_timer_get_time(); // 발사된 시간 기록
+
+    // 4. ECHO 핀이 Low가 될 때까지(반사파가 돌아올 때까지) 대기
+    while(gpio_get_level(ECHO_PIN) == 1 && esp_timer_get_time() < timeout) {}
+    int64_t echo_end = esp_timer_get_time(); // 돌아온 시간 기록
+
+    // 타임아웃 발생 시 측정 실패(-1) 반환
+    if (echo_end >= timeout) return -1.0;
+
+    // 5. 거리 계산: (왕복 시간(us) * 소리 속도(340m/s = 0.0343cm/us)) / 2
+    int64_t time_diff = echo_end - echo_start;
+    return (float)time_diff * 0.0343 / 2.0;
+}
+
+
+//Moving Average Filter (이동 평균 필터) 구현
+#define WINDOW_SIZE 5 // 평균을 낼 데이터의 개수 (값을 키울수록 부드러워지지만, 반응 속도는 느려짐)
+
+float dist_window[WINDOW_SIZE] = {0,};
+int window_idx = 0;
+bool is_window_filled = false;
+
+// 이동 평균 필터 함수
+float get_filtered_distance(float new_dist) {
+    // 1. 예외 처리: 센서 타임아웃 등 에러 값(-1.0)이 들어오면 버퍼에 넣지 않고 그대로 통과
+    if (new_dist < 0) {
+        return -1.0; 
+    }
+
+    // 2. 새로운 값을 버퍼의 현재 인덱스 자리에 덮어쓰기
+    dist_window[window_idx] = new_dist;
+    window_idx++;
+
+    // 3. 인덱스가 창 크기를 넘어가면 다시 처음(0)으로 되돌림 (원형 버퍼 회전)
+    if (window_idx >= WINDOW_SIZE) {
+        window_idx = 0;
+        is_window_filled = true;
+    }
+
+    // 4. 현재까지 버퍼에 쌓인 유효한 데이터의 개수 파악
+    int count = is_window_filled ? WINDOW_SIZE : window_idx;
+    
+    // 5. 버퍼 안의 데이터 합산 및 평균 계산
+    float sum = 0;
+    for (int i = 0; i < count; i++) {
+        sum += dist_window[i];
+    }
+
+    return sum / count;
+}
+
 void app_main(void)
 {
     // 1. 초기화
@@ -339,178 +429,35 @@ void app_main(void)
     // ... 기존 I2C 및 LCD 초기화 코드 유지 ...
     
     // ADC 하드웨어 초기화 실행
-    adc_init();
+    // adc_init();
+
+    // 초음파 센서 초기화
+    hcsr04_init();
+
+   // ... 기존 초기화 코드 유지 ...
 
     while (1) {
-        int adc_raw = 0;
+        // 1. 센서에서 원시 데이터(Raw Data)를 읽어옴
+        float raw_distance = get_distance();
         
-        // GPIO 13 (채널 4)에서 현재 전압(0~4095)을 읽어옴
-        ESP_ERROR_CHECK(adc_oneshot_read(adc2_handle, ADC_CHANNEL_4, &adc_raw));
+        // 2. 원시 데이터를 이동 평균 필터에 통과시킴
+        float avg_distance = get_filtered_distance(raw_distance);
 
-        // 읽어온 디지털 값(0~4095)을 실제 전압(0~3.3V)으로 대략적으로 변환
-        float voltage = ((float)adc_raw / 4095.0) * 3.3;
+        char dist_str[16];
+        if (avg_distance < 0) {
+            sprintf(dist_str, "Out of Range  ");
+        } else {
+            // 원시 값 대신 필터링된 평균값을 소수점 첫째 자리까지 출력
+            sprintf(dist_str, "Avg: %5.1f cm", avg_distance); 
+        }
 
-        // LCD 출력을 위해 문자열로 포장
-        char raw_str[16];
-        char vol_str[16];
-        sprintf(raw_str, "RAW: %04d", adc_raw);
-        sprintf(vol_str, "VOL: %.2f V", voltage);
-
-        // LCD 화면 갱신
+        // 3. LCD 출력
         lcd_clear();
         lcd_put_cur(0, 0);
-        lcd_send_string(raw_str); // 첫째 줄: 0~4095 원시 데이터
+        lcd_send_string("Moving Average"); // 첫 줄 안내문 변경
         lcd_put_cur(1, 0);
-        lcd_send_string(vol_str); // 둘째 줄: 0.00 ~ 3.30 V 변환 데이터
+        lcd_send_string(dist_str);
 
-        // 너무 빨리 화면이 바뀌어 글자가 깨지는 것을 방지 (0.2초 대기)
-        vTaskDelay(pdMS_TO_TICKS(200)); 
+        vTaskDelay(pdMS_TO_TICKS(100)); // 측정 주기 (너무 빠르면 초음파 간섭 발생)
     }
-
-    // while (1) {
-    //     // [대기화면] 당신의 생년월일을 입력해주세요 (Enter Birthdate:)
-    //     lcd_clear();
-    //     lcd_put_cur(0, 0);
-    //     lcd_send_string("Please Enter");
-    //     lcd_put_cur(1, 0);
-    //     lcd_send_string("Your Birthdate:");
-        
-    //     char input_id[7] = {0};
-    //     get_keypad_input(input_id, 6, false); // 생년월일 6자리, 마스킹 안 함
-
-    //     // 등록된 회원인지 검색
-    //     int found_idx = -1;
-    //     for(int i=0; i<user_cnt; i++) {
-    //         if(users[i].is_active && strcmp(users[i].birth, input_id) == 0) {
-    //             found_idx = i;
-    //             break;
-    //         }
-    //     }
-
-    //     if (found_idx == -1) {
-    //         // ==========================================
-    //         // [신규 회원 가입 로직]
-    //         // ==========================================
-    //         if (user_cnt >= 10) {
-    //             lcd_clear();
-    //             lcd_put_cur(0, 0); lcd_send_string("Memory Full!");
-    //             vTaskDelay(pdMS_TO_TICKS(3000));
-    //             continue;
-    //         }
-
-    //         // 신규회원님 안녕하세요. 비밀번호를 설정해주세요.
-    //         lcd_clear();
-    //         lcd_put_cur(0, 0); lcd_send_string("New User Hello");
-    //         lcd_put_cur(1, 0); lcd_send_string("Set PW (4):");
-    //         vTaskDelay(pdMS_TO_TICKS(2000)); // 인사말 2초 출력
-            
-    //         lcd_clear();
-    //         lcd_put_cur(0, 0); lcd_send_string("Set PW (4):");
-    //         char input_pw1[5] = {0};
-    //         get_keypad_input(input_pw1, 4, true); // 비밀번호 4자리, 마스킹(*) 적용
-
-    //         // 비밀번호를 다시 한번 입력해주세요.
-    //         lcd_clear();
-    //         lcd_put_cur(0, 0); lcd_send_string("Enter PW Again:");
-    //         char input_pw2[5] = {0};
-    //         get_keypad_input(input_pw2, 4, true);
-
-    //         if (strcmp(input_pw1, input_pw2) == 0) {
-    //             // 일치함: 비밀번호 설정 및 회원 등록 완료
-    //             strcpy(users[user_cnt].birth, input_id);
-    //             strcpy(users[user_cnt].pw, input_pw1);
-    //             users[user_cnt].is_active = true;
-    //             user_cnt++;
-
-    //             lcd_clear();
-    //             lcd_put_cur(0, 0); lcd_send_string("Reg Complete!");
-    //             vTaskDelay(pdMS_TO_TICKS(3000));
-    //         } else {
-    //             // 불일치 1회: 동일한 비밀번호로 다시 한 번 입력해주세요.
-    //             lcd_clear();
-    //             lcd_put_cur(0, 0); lcd_send_string("Diff PW. Again:");
-    //             memset(input_pw2, 0, sizeof(input_pw2)); // 버퍼 비우기
-    //             get_keypad_input(input_pw2, 4, true);
-
-    //             if (strcmp(input_pw1, input_pw2) == 0) {
-    //                 // 일치함: 등록 완료
-    //                 strcpy(users[user_cnt].birth, input_id);
-    //                 strcpy(users[user_cnt].pw, input_pw1);
-    //                 users[user_cnt].is_active = true;
-    //                 user_cnt++;
-
-    //                 lcd_clear();
-    //                 lcd_put_cur(0, 0); lcd_send_string("Reg Complete!");
-    //                 vTaskDelay(pdMS_TO_TICKS(3000));
-    //             } else {
-    //                 // 불일치 2회: 회원 등록에 실패했습니다. (3초 대기 후 초기화)
-    //                 lcd_clear();
-    //                 lcd_put_cur(0, 0); lcd_send_string("Reg Failed.");
-    //                 lcd_put_cur(1, 0); lcd_send_string("Try Again Later");
-    //                 vTaskDelay(pdMS_TO_TICKS(3000));
-    //             }
-    //         }
-    //     } else {
-    //         // ==========================================
-    //         // [기존 회원 로그인 로직]
-    //         // ==========================================
-    //         // '생년월일' 회원님 안녕하세요. 비밀번호를 입력해주세요.
-    //         lcd_clear();
-    //         lcd_put_cur(0, 0); lcd_send_string("Hello "); lcd_send_string(input_id);
-    //         lcd_put_cur(1, 0); lcd_send_string("Enter PW:");
-            
-    //         while (1) {
-    //             char login_pw[5] = {0};
-    //             get_keypad_input(login_pw, 4, true);
-
-    //             if (strcmp(users[found_idx].pw, login_pw) == 0) {
-    //                 // 비밀번호 맞음: 회원정보 확인됨. 즐거운 시간 보내세요.
-    //                 lcd_clear();
-    //                 lcd_put_cur(0, 0); lcd_send_string("Verified.");
-    //                 lcd_put_cur(1, 0); lcd_send_string("Have a good time");
-    //                 vTaskDelay(pdMS_TO_TICKS(3000));
-    //                 break; // 로그인 루프 탈출 -> 대기 화면으로
-    //             } else {
-    //                 // 비밀번호 틀림: 다시 확인하고 입력해주세요.
-    //                 lcd_clear();
-    //                 lcd_put_cur(0, 0); lcd_send_string("Wrong PW. Again:");
-    //                 // break를 하지 않으므로 다시 get_keypad_input으로 올라가 입력을 대기함
-    //             }
-    //         }
-    //     }
-    // }
-    // while (1) {
-    //     for (int i = 0; i < 4; i++)
-    //     {
-    //         gpio_set_level(GPIO_OUTPUT_IO_0, i == 0);
-    //         gpio_set_level(GPIO_OUTPUT_IO_1, i == 1);
-    //         gpio_set_level(GPIO_OUTPUT_IO_2, i == 2);
-    //         gpio_set_level(GPIO_OUTPUT_IO_3, i == 3);
-
-    //         rows[3][3-i] = gpio_get_level(GPIO_INPUT_IO_0);
-    //         rows[2][3-i] = gpio_get_level(GPIO_INPUT_IO_1);
-    //         rows[1][3-i] = gpio_get_level(GPIO_INPUT_IO_2);
-    //         rows[0][3-i] = gpio_get_level(GPIO_INPUT_IO_3);            
-    //     }
-    //     vTaskDelay(100 / portTICK_PERIOD_MS);
-    //     for (int i = 0; i < 4; i++)
-    //     {
-    //         for (int j = 0; j < 4; j++)
-    //         {
-    //             if (rows[i][j] == 1) {
-    //                 printf("%c\n", data[i][j]);
-    //                 text[txt_cnt / 16][txt_cnt % 16] = data[i][j];
-    //                 txt_cnt = (txt_cnt + 1) % 32; //32로 나눈 나머지, 32가 넘어가면 다시 0으로 돌아감
-
-    //                 if (txt_cnt % 16 == 0) {
-    //                     memset(text[txt_cnt / 16], ' ', sizeof(text[txt_cnt / 16])); //기존 텍스트 삭제
-    //                 }
-    //             } 
-    //         }
-    //     }
-    //     lcd_put_cur(0, 0);
-    //     lcd_send_string(text[0]); //text[0][0]의 메모리 주소(포인터 &text[0][0]와 완벽히 동일)를 전달하여 문자열 전체를 출력
-    //     lcd_put_cur(1, 0);
-    //     lcd_send_string(text[1]); //text[1][0]의 메모리 주소(포인터 &text[1][0]와 완벽히 동일)를 전달하여 문자열 전체를 출력
-    // }
 }
