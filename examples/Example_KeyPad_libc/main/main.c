@@ -55,7 +55,7 @@ void app_main(void)
     keypad_init(keypad_col_pins, KEYPAD_COLS, keypad_row_pins, KEYPAD_ROWS, GPIO_PULL_DOWN);
     while (1)
     {
-        keypad = keypad_getChar(keypad_col_pins, KEYPAD_COLS, keypad_row_pins, KEYPAD_ROWS, letter, 100);
+        keypad = keypad_getChar(keypad_col_pins, KEYPAD_COLS, keypad_row_pins, KEYPAD_ROWS, (const char*)letter, 100);
         if (keypad != -1)
         {
             printf("Pressed : %c\n", keypad);
