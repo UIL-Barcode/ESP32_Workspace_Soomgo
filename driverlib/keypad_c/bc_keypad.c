@@ -72,9 +72,9 @@ int keypad_init(const int *_keypad_in_pins, const int _max_in,
     return (rst1 == 0) && (rst2 == 0) ? 0 : -1;
 }
 
-char keypad_getChar(const int *_keypad_in_pins, const int _max_in,
-                    const int *_keypad_out_pins, const int _max_out,
-                    const char letter[_max_out][_max_in], const int delay_ms)
+char keypad_getChar(const int* _keypad_in_pins, const int _max_in,
+                    const int* _keypad_out_pins, const int _max_out,
+                    const char* _letter, const int delay_ms)
 {
     char rst = -1;
 
@@ -87,7 +87,7 @@ char keypad_getChar(const int *_keypad_in_pins, const int _max_in,
         {
             if (gpio_get_level(_keypad_in_pins[j]))
             {
-                rst = letter[i][j];
+                rst = *(_letter + ((i * _max_out) + j));
             }
         }
 
