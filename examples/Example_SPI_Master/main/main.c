@@ -5,9 +5,9 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-
+    
 // [1] 하드웨어 핀 및 설정 매크로 (타겟 칩셋에 맞게 핀 번호 수정 필요)
-#define SPI_HOST_ID     SPI2_HOST
+#define SPI_HOST_ID     SPI2_HOST // pin이 아님, SPI2_HOST는 ESP32의 SPI2 버스를 의미 (VSPI 또는 HSPI로도 불림)
 #define PIN_NUM_MISO    GPIO_NUM_12
 #define PIN_NUM_MOSI    GPIO_NUM_13
 #define PIN_NUM_CLK     GPIO_NUM_14
