@@ -2,24 +2,42 @@
 #include <string.h> // For memset
 #include "driver/spi_master.h" // For SPI communication
 #include "driver/gpio.h" // For GPIO pin definitions
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_log.h"
+#include "esp_adc/adc_oneshot.h"
 
+#define MY_MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MY_MAX(x, y) ((x) > (y) ? (x) : (y))
 
 #define PIN_NUM_MISO    GPIO_NUM_12
 #define PIN_NUM_MOSI    GPIO_NUM_13
 #define PIN_NUM_CLK     GPIO_NUM_14
 #define PIN_NUM_CS      GPIO_NUM_15
 
+// 핀 및 채널 정의
+#define JOYSTICK_X_ADC_CHAN ADC_CHANNEL_6 // GPIO34
+#define JOYSTICK_Y_ADC_CHAN ADC_CHANNEL_7 // GPIO35
+#define JOYSTICK_SW_PIN     GPIO_NUM_32   // 버튼 핀
+
 #define TX_PAYLOAD_SIZE 2                 // 2 Bytes
 
+spi_device_handle_t spi;
+adc_oneshot_unit_handle_t adc1_handle;
+
+// [로직 추가] 점의 초기 좌표 설정 (0부터 시작하는 인덱스 기준)
+int current_row = 3;  // 4번째 줄
+int current_col = 16; // 17번째 칸
+
 uint32_t map[8] = {
-    0xF0000000, // Row 1
-    0x0F000000, // Row 2
-    0x00F00000, // Row 3
-    0x000F0000, // Row 4
-    0x0000F000, // Row 5
-    0x00000F00, // Row 6
-    0x000000F0, // Row 7
-    0x0000000F  // Row 8
+    0xF000000F, // Row 1 (0, 0)
+    0x0F0000F0, // Row 2
+    0x00F00F00, // Row 3
+    0x000FF000, // Row 4
+    0x00000000, // Row 5
+    0x00000000, // Row 6
+    0x00000000, // Row 7
+    0x80000000  // Row 8
 };
 
 // 8byte SPI 전송 함수
@@ -65,11 +83,9 @@ void print_map(spi_device_handle_t spi)
     }
 }
 
-void app_main(void)
-{
+void SPI_Master_Init() {
     esp_err_t ret;
 
-    spi_device_handle_t spi;
     spi_bus_config_t buscfg = {
         .miso_io_num = PIN_NUM_MISO,
         .mosi_io_num = PIN_NUM_MOSI,
@@ -114,23 +130,103 @@ void app_main(void)
     transmit_spi_2byte(spi, 0x0A, 0x0F);
     transmit_spi_2byte(spi, 0x0B, 0x07);
     transmit_spi_2byte(spi, 0x0F, 0x00);
+}
 
-    uint8_t data[8] = {0x00}; //최초의 한 바이트만 0으로 초기화하면 전체 배열이 0으로 초기화됨
+
+void ADC_Init() {
+    // ADC 초기화 코드 (필요한 경우)
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << JOYSTICK_SW_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&io_conf);
+
+    // 2. ADC One-Shot 핸들 초기화
+    adc_oneshot_unit_init_cfg_t init_config1 = {
+        .unit_id = ADC_UNIT_1,
+        .ulp_mode = ADC_ULP_MODE_DISABLE,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
+
+    // 3. ADC 채널 세팅 (12비트 해상도, 11dB 감쇠기로 0~3.3V 전체 범위 측정)
+    adc_oneshot_chan_cfg_t config = {
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+        .atten = ADC_ATTEN_DB_12,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, JOYSTICK_X_ADC_CHAN, &config));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, JOYSTICK_Y_ADC_CHAN, &config));
+
+}
+
+
+void app_main(void)
+{
+    int x_val = 0;
+    int y_val = 0;
+    int sw_val = 0;
+
+    SPI_Master_Init();
+    ADC_Init();
+
 
 
     while (1) {
-        for(uint8_t i = 0; i < 8; i++) {
-            data[0] = i+1; //행 주소 (0)
-            data[2] = i+1;      
-            data[4] = i+1;
-            data[6] = i+1;
-            transmit_spi_8byte(spi, data); // 배열의 이름은 해당 배열의 주소를 의미
-        }
+        
+       // 아날로그 값 읽기 (0 ~ 4095)
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_X_ADC_CHAN, &x_val));
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_Y_ADC_CHAN, &y_val));
+        
+        // 디지털 스위치 상태 읽기 (눌리면 0, 안 눌리면 1)
+        sw_val = gpio_get_level(JOYSTICK_SW_PIN); 
 
+ //       ESP_LOGI(TAG, "X: %4d | Y: %4d | SW: %d", x_val, y_val, sw_val);
+
+        // 50ms마다 측정 (20Hz 샘플링)
+    //    vTaskDelay(pdMS_TO_TICKS(50));
+
+//        current_col = (x_val * 31) / 4095; // 0~31 범위로 매핑
+  //      current_row = (y_val * 7) / 4095;  // 0~7 범위로 매핑
+        if(x_val<1000) current_col -= 1; // x_val이 1000보다 작으면 왼쪽으로 이동
+        else if(x_val>3000) current_col += 1; // x_val이 3000보다 크면 오른쪽으로 이동
+        if(y_val<1000) current_row -= 1; // y_val이 1000보다 작으면 아래로 이동
+        else if(y_val>3000) current_row += 1; // y_val이 3000보다 크면 위로 이동
+        
+        current_col = MY_MIN(MY_MAX(current_col, 0), 31); // x_val이 0~31 범위를 벗어나지 않도록 보장
+        current_row = MY_MIN(MY_MAX(current_row, 0), 7);  // y_val이 0~7 범위를 벗어나지 않도록 보장
+
+        // 1. 기존 화면 지우기 (버퍼의 모든 잔상을 0으로 덮어씀)
+        memset(map, 0, sizeof(map));
+
+        // 2. 현재 좌표에 점 찍기
+        // 1UL(Unsigned Long 타입의 숫자 1)을 current_col 만큼 시프트하여 해당 비트만 1로 켭니다.
+        map[current_row] = (1UL << current_col);
+
+        // 3. 디스플레이 화면 갱신
         print_map(spi);
+        
+        // 4. 좌표 이동 계산 (왼쪽으로 이동)
+        // 비트 연산에서 숫자가 작아지는 방향을 왼쪽으로 가정합니다.
+        // current_col--; 
+
+        // // 5. 경계 도달 시 위치 전환 (해당 row의 가장 왼쪽을 넘어간 경우)
+        // if (current_col < 0) {
+        //     current_col = 31;  // 다음 row의 가장 오른쪽 끝(31번째 칸)으로 래핑
+        //     current_row++;     // 아래 row로 이동
             
+        //     // 만약 가장 아래쪽 줄(row 7)마저 넘어갔다면 맨 윗줄(row 0)로 복귀
+        //     if (current_row > 7) {
+        //         current_row = 0;
+        //     }
+        // }
+        // current_col = (current_col + 1) % 32; // current_col이 0~31 범위를 벗어나지 않도록 보장
+        // if (current_col == 0) {
+        //     current_row = (current_row + 1) % 8; // current_row가 0~7 범위를 벗어나지 않도록 보장
+        // }
         // 1초(1000ms) 대기 (FreeRTOS 스케줄러 블로킹 해제)
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
 }
