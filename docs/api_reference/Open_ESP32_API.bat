@@ -1,0 +1,3 @@
+@echo off
+start "" "https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/index.html"
+exit
