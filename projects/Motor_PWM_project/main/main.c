@@ -72,6 +72,7 @@ void app_main(void) {
     }
 
     uint32_t duty = 0;
+    
     int fade_amount = 100; // 한 번에 변할 듀티비 크기
 
     // 무한 루프: LED가 서서히 밝아졌다가 어두워집니다.
