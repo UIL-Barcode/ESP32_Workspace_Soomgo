@@ -6,6 +6,7 @@
 
 # VS Code 및 사용자 설정 파일 (개인 PC 경로가 담겨있어 충돌 유발)
 **/.vscode/
+**/.env
 
 # software 폴더 내 설정파일
 software/*.json
