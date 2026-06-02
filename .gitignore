@@ -1,19 +1,20 @@
 # ESP-IDF 빌드 관련 파일 (절대 공유하면 안 되는 파일들)
-build/
-sdkconfig.old
-dependencies.lock
-managed_components/
+**/build/
+**/sdkconfig.old
+**/dependencies.lock
+**/managed_components/
 
 # VS Code 및 사용자 설정 파일 (개인 PC 경로가 담겨있어 충돌 유발)
-.vscode/c_cpp_properties.json
-.vscode/settings.json
-.vscode/launch.json
-.vscode/tasks.json
+**/.vscode/
+**/.env
 
 # software 폴더 내 설정파일
 software/*.json
 software/*.lic
 software/*.dll
+
+# templates 폴더 내 프로젝트 템플릿 (개인화된 설정이 담길 수 있음)
+templates/default_project
 
 # 기타 OS 찌꺼기 파일
 .DS_Store
