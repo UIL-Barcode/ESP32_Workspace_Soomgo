@@ -1,5 +1,6 @@
 # templates/default_project/main/CMakeLists.txt
 set(req "driver"
+        "L298N"
     )
 
 # 1. main 폴더 안에 있는 모든 .c 파일을 자동으로 찾아서 srcs 변수에 담습니다.
