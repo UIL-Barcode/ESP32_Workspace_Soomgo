@@ -82,13 +82,14 @@ static void init_hardware(void) {
     DRV8833_Init_Default(MOTOR_1, MOTOR_IN1_PIN, MOTOR_IN2_PIN);
     DRV8833_Init_Default(MOTOR_2, SERVO_MOTOR_IN3_PIN, SERVO_MOTOR_IN4_PIN);
 
+    DRV8833_SetRotation(MOTOR_1, ROTATION_CCW);
     /*
      * 서보 모터 제어를 위해 MOTOR_2의 기본 회전 방향을 정방향(CW)으로 설정합니다.
      * 기준: 정방향(Forward) 작동 시 좌회전, 역방향(Backward) 작동 시 우회전
      * 실제 기구 연결에 따라 좌/우 방향이 반대로 동작할 경우,
      * 아래 함수에서 ROTATION_CW 대신 ROTATION_CCW로 변경하여 방향을 교정할 수 있습니다.
      */
-    DRV8833_SetRotation(MOTOR_2, ROTATION_CW);
+    DRV8833_SetRotation(MOTOR_2, ROTATION_CCW);
 
     DRV8833_Enable(STBY_PIN); // 드라이버 활성화
 
@@ -106,17 +107,17 @@ static void set_servo_angle(int physical_angle) {
     if (physical_angle > 40) physical_angle = 40;
 
     // 조향 모터에 가할 PWM 전력 (0~255 범위 중 절반 수준의 파워 사용)
-    // 서보 모터 조향 속도를 해당 변수에서 조절하세요.(초기 50%, servo_speed 범위 : 0~255)
-    int servo_speed = 255 / 2;    // half power
+    // 서보 모터 조향 속도를 해당 변수에서 조절하세요.(초기 100%, servo_speed 범위 : 0~255)
+    int servo_speed = 255;    // full power
 
     // 각도에 따른 모터 회전 방향 설정:
     // 데드존(-10 ~ 10)을 두어 약간의 흔들림에 모터가 민감하게 반응하지 않도록 처리
-    if (physical_angle < -5)
+    if (physical_angle < -1)
     {
         // 각도가 -10 미만일 경우 왼쪽으로 회전 (정방향 구동)
         DRV8833_SetDirection(MOTOR_2, DIRECTION_FORWARD);   // LEFT
     }
-    else if (physical_angle > 5)
+    else if (physical_angle > 1)
     {
         // 각도가 10 초과일 경우 오른쪽으로 회전 (역방향 구동)
         DRV8833_SetDirection(MOTOR_2, DIRECTION_BACKWARD);   // RIGHT
@@ -126,7 +127,7 @@ static void set_servo_angle(int physical_angle) {
         // 각도가 데드존 이내인 경우 모터 파워 차단 (직진 상태 유지)
         servo_speed = 0;
     }
-
+    printf("Set Servo Angle: %d, PWM: %d\n", physical_angle, servo_speed); // 디버깅용 로그 출력
     // 결정된 모터 속도(PWM) 및 방향을 DRV8833에 적용
     DRV8833_SetSpeed(MOTOR_2, servo_speed);
 }
@@ -161,7 +162,8 @@ static void motor_scurve_task(void *pvParameter) {
 
         // 최종 계산된 PWM 값을 DRV8833 구동 모터에 인가
         DRV8833_SetSpeed(MOTOR_1, current_pwm);
-        
+        printf("Target Speed: %.2f, Filtered Speed: %.2f\n", target_speed, filter2); // 디버깅용 로그 출력
+
         // 태스크 지연 (10ms 주기로 제어 루프 반복)
         vTaskDelay(pdMS_TO_TICKS(10)); 
     }
@@ -218,6 +220,9 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
             // 안드로이드 앱에서 검색될 블루투스 디바이스 이름 설정 및 스캔 활성화
             esp_bt_gap_set_device_name("ESP32_RC_CAR");
             esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+            
+            //target_speed = 0.0; // 즉각적으로 차량 목표 속도를 0으로 만들어 자동 정지
+            //DRV8833_Enable(STBY_PIN);  // 드라이버 활성화
             break;
         case ESP_SPP_DATA_IND_EVT:
             // 안드로이드 앱으로부터 시리얼 데이터 수신 이벤트 발생 시
