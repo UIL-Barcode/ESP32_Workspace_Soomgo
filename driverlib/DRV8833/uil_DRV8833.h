@@ -17,9 +17,10 @@ typedef enum {
  * @brief 모터의 현재 제어 구동 방향 (전진/후진)
  */
 typedef enum {
-    DIRECTION_FORWARD = 1,  // 전진
-    DIRECTION_BACKWARD = 2  // 후진
-} DIRECTION;
+    DIRECTION_FORWARD = 1, // 전진
+    DIRECTION_BACKWARD = 2 // 후진
+}
+DIRECTION;
 
 /**
  * @brief 제어할 모터 식별자
@@ -113,10 +114,10 @@ void DRV8833_SetDirection(MOTOR motor, DIRECTION direction);
  * @brief 하위 레벨 함수로, 특정 모터의 개별 핀(1번 또는 2번)에 대한 PWM 듀티 사이클을 직접 설정합니다.
  * 
  * @param motor 대상 모터 식별자
- * @param pin 제어할 모터의 핀 번호 (1 또는 2)
+ * @param direction 구동 방향 (DIRECTION_FORWARD 또는 DIRECTION_BACKWARD)
  * @param speed 적용할 속도값 (0~255)
  */
-void DRV8833_PWM_SetSpeed(MOTOR motor, int pin, int speed);
+void DRV8833_PWM_SetSpeed(MOTOR motor, DIRECTION direction, int speed);
 
 /**
  * @brief 모터의 전체 동작 속도를 갱신하고 현재 설정된 구동 방향에 맞춰 바로 속도를 적용합니다.

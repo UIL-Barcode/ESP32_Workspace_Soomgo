@@ -15,12 +15,16 @@
  * * 3. 블루투스 모드 변경 (BLE 전용 -> Classic 포함):
  * -> [Bluetooth controller] 
  * -> [Bluetooth mode] 
- * -> 'Bluetooth Dual Mode' 또는 'BR/EDR Only' 선택
+ * -> 'BR/EDR Only' 선택
  * * 4. Bluedroid 및 SPP(Serial Port Profile) 활성화:
  * -> 뒤로 가기(Esc) 후 [Bluedroid Enable] 메뉴로 이동
  * -> 'Classic Bluetooth' 항목 스페이스바를 눌러 체크 [*]
  * -> 하위에 나타나는 'SPP' 항목 스페이스바를 눌러 체크 [*]
- * * 5. 저장 및 강력한 재빌드 (기존 캐시 제거 필수):
+ * * 5. PBAP Client:
+ * -> 'Bluetooth Low Energy' 비활성화
+ * * 6. Controller Options
+ * -> Bluetooth controller mode 'BR/EDR Only' 선택
+ * * 7. 저장 및 강력한 재빌드 (기존 캐시 제거 필수):
  * -> 'S' 키를 눌러 저장 후, 'Q' 키를 눌러 종료
  * -> Full Clean(쓰레기통 아이콘), Build(스패너 아이콘)
  * ====================================================================================
@@ -55,11 +59,17 @@
 
 #define STBY_PIN            14
 
+#define LED_FRONT_PIN       32
+#define LED_BACK_PIN        12
+
 // ==============================================================================
 // 전역 제어 상태 및 통신 버퍼 변수
 // ==============================================================================
 // 모터 구동의 목표 속도를 저장하는 변수 (기어비 및 가속/감속 로직에 의해 결정됨)
 static float target_speed = 0.0;
+static int servo_speed = 0;
+static int current_brake = 0;
+static int current_light = 0;
 
 // 안드로이드 앱에서 전송하는 블루투스 통신 데이터를 임시 저장하는 수신 버퍼
 #define RX_BUF_SIZE 128
@@ -68,28 +78,36 @@ static int rx_idx = 0;
 
 // 함수 사전 선언
 static void init_hardware(void);
+static void init_gpio(void);
 static void parse_packet(const char* packet);
 static void set_servo_angle(int physical_angle);
 static void motor_scurve_task(void *pvParameter);
 static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
 
+static void init_gpio(void)
+{
+    gpio_config_t io_conf = {
+        .intr_type = GPIO_INTR_DISABLE,
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = (1ULL<<LED_FRONT_PIN) | (1ULL<<LED_BACK_PIN),
+        .pull_down_en = 0, .pull_up_en = 0
+    };
+    gpio_config(&io_conf);
+    
+    gpio_set_level(LED_FRONT_PIN, 0);
+    gpio_set_level(LED_BACK_PIN, 1);
+}
+
 // ==============================================================================
 // 하드웨어 초기화 (DRV8833 라이브러리 설정)
 // ==============================================================================
 static void init_hardware(void) {
+    init_gpio();
+
     // 직접 제작한 DRV8833 모터 드라이버 라이브러리 초기화: 
     // MOTOR_1은 구동용, MOTOR_2는 조향용(서보)으로 핀 매핑
     DRV8833_Init_Default(MOTOR_1, MOTOR_IN1_PIN, MOTOR_IN2_PIN);
     DRV8833_Init_Default(MOTOR_2, SERVO_MOTOR_IN3_PIN, SERVO_MOTOR_IN4_PIN);
-
-    DRV8833_SetRotation(MOTOR_1, ROTATION_CCW);
-    /*
-     * 서보 모터 제어를 위해 MOTOR_2의 기본 회전 방향을 정방향(CW)으로 설정합니다.
-     * 기준: 정방향(Forward) 작동 시 좌회전, 역방향(Backward) 작동 시 우회전
-     * 실제 기구 연결에 따라 좌/우 방향이 반대로 동작할 경우,
-     * 아래 함수에서 ROTATION_CW 대신 ROTATION_CCW로 변경하여 방향을 교정할 수 있습니다.
-     */
-    DRV8833_SetRotation(MOTOR_2, ROTATION_CCW);
 
     DRV8833_Enable(STBY_PIN); // 드라이버 활성화
 
@@ -106,30 +124,23 @@ static void set_servo_angle(int physical_angle) {
     if (physical_angle < -40) physical_angle = -40;
     if (physical_angle > 40) physical_angle = 40;
 
-    // 조향 모터에 가할 PWM 전력 (0~255 범위 중 절반 수준의 파워 사용)
-    // 서보 모터 조향 속도를 해당 변수에서 조절하세요.(초기 100%, servo_speed 범위 : 0~255)
-    int servo_speed = 255;    // full power
-
     // 각도에 따른 모터 회전 방향 설정:
-    // 데드존(-10 ~ 10)을 두어 약간의 흔들림에 모터가 민감하게 반응하지 않도록 처리
+    // 데드존(-1 ~ 1)을 두어 약간의 흔들림에 모터가 민감하게 반응하지 않도록 처리
     if (physical_angle < -1)
     {
         // 각도가 -10 미만일 경우 왼쪽으로 회전 (정방향 구동)
-        DRV8833_SetDirection(MOTOR_2, DIRECTION_FORWARD);   // LEFT
+        servo_speed = 255;
     }
     else if (physical_angle > 1)
     {
         // 각도가 10 초과일 경우 오른쪽으로 회전 (역방향 구동)
-        DRV8833_SetDirection(MOTOR_2, DIRECTION_BACKWARD);   // RIGHT
+        servo_speed = -255;
     }
     else
     {
         // 각도가 데드존 이내인 경우 모터 파워 차단 (직진 상태 유지)
         servo_speed = 0;
     }
-    printf("Set Servo Angle: %d, PWM: %d\n", physical_angle, servo_speed); // 디버깅용 로그 출력
-    // 결정된 모터 속도(PWM) 및 방향을 DRV8833에 적용
-    DRV8833_SetSpeed(MOTOR_2, servo_speed);
 }
 
 // ==============================================================================
@@ -139,7 +150,7 @@ static void set_servo_angle(int physical_angle) {
 static void motor_scurve_task(void *pvParameter) {
     // 2단계 저주파 통과 필터(Low-pass filter) 변수 및 계수 설정
     float filter1 = 0.0, filter2 = 0.0;
-    const float alpha = 0.08; 
+    const float alpha = 0.2;
 
     while (1) {
         // 목표 속도(target_speed)에 대해 부드러운 전환 효과(S-Curve)를 위한 필터링 연산
@@ -162,7 +173,30 @@ static void motor_scurve_task(void *pvParameter) {
 
         // 최종 계산된 PWM 값을 DRV8833 구동 모터에 인가
         DRV8833_SetSpeed(MOTOR_1, current_pwm);
-        printf("Target Speed: %.2f, Filtered Speed: %.2f\n", target_speed, filter2); // 디버깅용 로그 출력
+
+        DRV8833_SetSpeed(MOTOR_2, abs(servo_speed));
+        if (servo_speed > 0)
+        {
+            DRV8833_SetDirection(MOTOR_2, DIRECTION_FORWARD);
+        }
+        else
+        {
+            DRV8833_SetDirection(MOTOR_2, DIRECTION_BACKWARD);
+        }
+
+        bool isZero = (current_pwm == 0);
+        bool isDecreasing = (current_brake > 0);
+        
+        if (isZero || isDecreasing)
+        {
+            gpio_set_level(LED_BACK_PIN, 1);
+        }
+        else
+        {
+            gpio_set_level(LED_BACK_PIN, 0);
+        }
+
+        gpio_set_level(LED_FRONT_PIN, current_light);
 
         // 태스크 지연 (10ms 주기로 제어 루프 반복)
         vTaskDelay(pdMS_TO_TICKS(10)); 
@@ -178,10 +212,11 @@ static void parse_packet(const char* packet) {
     int gear = 0;          // 기어 상태 (1: 전진, -1: 후진, 0: 중립/주차)
     int accel = 0;         // 가속 페달 값 (0 ~ 100)
     int brake = 0;         // 브레이크 페달 값 (0 ~ 100)
+    int light = 0;         // 브레이크 페달 값 (0 ~ 100)
 
     // 앱에서 보내는 문자열 "S:{각도},G:{기어},A:{가속},B:{브레이크}" 형식을 파싱
     // 인자가 총 4개이므로 정상적으로 추출되었을 경우 4를 반환
-    int parsed_count = sscanf(packet, "S:%d,G:%d,A:%d,B:%d", &parsed_angle, &gear, &accel, &brake);
+    int parsed_count = sscanf(packet, "S:%d,G:%d,A:%d,B:%d,L:%d", &parsed_angle, &gear, &accel, &brake, &light);
 
     // 1. 조향 제어 (주차 상태여도 서보 모터는 핸들링을 위해 독립적으로 동작 가능)
     if (parsed_count >= 1) {
@@ -189,11 +224,17 @@ static void parse_packet(const char* packet) {
     }
 
     // 2. 구동 제어 (4개의 파라미터를 모두 성공적으로 수신했을 때 실행)
-    if (parsed_count == 4) {
+    if (parsed_count == 5) {
         // 앱에서 전달된 입력값이 설정 범위를 벗어나지 않도록 클램핑 처리
         if (accel > 100) accel = 100; else if (accel < 0) accel = 0;
         if (brake > 100) brake = 100; else if (brake < 0) brake = 0;
+        current_brake = brake;
         
+        if (light == 0 || light == 1)
+        {
+            current_light = light;
+        }
+
         // 순수 동력 계산: 가속 값에서 브레이크 값을 차감
         // 브레이크를 많이 밟아도 역방향 구동으로 이어지지 않도록 0으로 하한선 적용
         int net_power = accel - brake;
@@ -221,8 +262,8 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
             esp_bt_gap_set_device_name("ESP32_RC_CAR");
             esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
             
-            //target_speed = 0.0; // 즉각적으로 차량 목표 속도를 0으로 만들어 자동 정지
-            //DRV8833_Enable(STBY_PIN);  // 드라이버 활성화
+            target_speed = 0.0; // 즉각적으로 차량 목표 속도를 0으로 만들어 자동 정지
+            DRV8833_Enable(STBY_PIN);  // 드라이버 활성화
             break;
         case ESP_SPP_DATA_IND_EVT:
             // 안드로이드 앱으로부터 시리얼 데이터 수신 이벤트 발생 시
@@ -232,7 +273,6 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
                 if (c == '\n' || c == '\r') {
                     if (rx_idx > 0) {
                         rx_buf[rx_idx] = '\0';        // 문자열의 끝에 NULL 추가
-                        printf("%s\n", rx_buf);       // 수신 데이터 콘솔 로그 출력
                         parse_packet(rx_buf);         // 수신된 문자열 패킷 분석 및 모터 제어 반영
                         rx_idx = 0;                   // 다음 데이터를 위해 버퍼 인덱스 초기화
                     }

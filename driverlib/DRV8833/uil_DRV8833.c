@@ -165,8 +165,8 @@ void DRV8833_SetDirection(MOTOR motor, DIRECTION direction)
 
     // 물리적 모터 장착 방식이 정방향(CW)이면 1번 핀이 (+), 2번 핀이 (-) 역할
     // 역방향(CCW)으로 장착되었으면 2번 핀이 (+), 1번 핀이 (-) 역할로 스위칭
-    pin_p = (target->rotation == ROTATION_CW) ? 1 : 2;
-    pin_n = (target->rotation == ROTATION_CW) ? 2 : 1;
+    pin_p = (target->rotation == ROTATION_CW) ? DIRECTION_FORWARD : DIRECTION_BACKWARD;
+    pin_n = (target->rotation == ROTATION_CW) ? DIRECTION_BACKWARD : DIRECTION_FORWARD;
 
     switch(direction)
     {
@@ -187,8 +187,8 @@ void DRV8833_SetDirection(MOTOR motor, DIRECTION direction)
         default:
         {
             // 예외 및 정지: 양쪽 핀 출력을 모두 0으로 만들어 정지(브레이크)
-            DRV8833_PWM_SetSpeed(motor, 1, 0);
-            DRV8833_PWM_SetSpeed(motor, 2, 0);
+            DRV8833_PWM_SetSpeed(motor, DIRECTION_FORWARD, 0);
+            DRV8833_PWM_SetSpeed(motor, DIRECTION_BACKWARD, 0);
         }
         break;
     }
@@ -197,11 +197,11 @@ void DRV8833_SetDirection(MOTOR motor, DIRECTION direction)
 /**
  * @brief 하드웨어 추상화 계층으로, 선택한 모터의 특정 핀(1 또는 2)에 실제 PWM 듀티 사이클을 기록합니다.
  */
-void DRV8833_PWM_SetSpeed(MOTOR motor, int pin, int speed)
+void DRV8833_PWM_SetSpeed(MOTOR motor, DIRECTION direction, int speed)
 {
     ASSERT(is_ready); // 드라이버가 활성화되어 있어야 함
     ASSERT(motor == MOTOR_1 || motor == MOTOR_2);
-    ASSERT(pin == 1 || pin == 2);
+    ASSERT(direction == DIRECTION_FORWARD || direction == DIRECTION_BACKWARD);
     ASSERT(0 <= speed && speed <= 255); // 속도는 8비트 해상도 내 존재해야 함
 
     int channel = 0;
@@ -209,11 +209,11 @@ void DRV8833_PWM_SetSpeed(MOTOR motor, int pin, int speed)
     // 모터 번호와 핀 번호의 조합에 따라 ESP32 LEDC에 매핑된 채널을 결정
     if (motor == MOTOR_1)
     {
-        channel = (pin == 1) ? LEDC_CHANNEL_0 : LEDC_CHANNEL_1;
+        channel = (direction == DIRECTION_FORWARD) ? LEDC_CHANNEL_0 : LEDC_CHANNEL_1;
     }
     if (motor == MOTOR_2)
     {
-        channel = (pin == 1) ? LEDC_CHANNEL_2 : LEDC_CHANNEL_3;
+        channel = (direction == DIRECTION_FORWARD) ? LEDC_CHANNEL_2 : LEDC_CHANNEL_3;
     }
 
     // 결정된 하드웨어 채널에 듀티 사이클(속도) 설정 및 반영
@@ -231,9 +231,15 @@ void DRV8833_SetSpeed(MOTOR motor, int speed)
     ASSERT(0 <= speed && speed <= 255);
 
     DRV8833_config_t* target = (motor == MOTOR_1) ? &DRV8833_M1 : &DRV8833_M2;
+    DRV8833_config_t* target_opposite = (motor == MOTOR_1) ? &DRV8833_M2 : &DRV8833_M1;
+
+    int dir_main = target->direction;
+    int dir_opposite = (dir_main == DIRECTION_FORWARD) ? DIRECTION_BACKWARD : DIRECTION_FORWARD;
 
     target->speed = speed; // 현재 속도 변수 갱신
+    target_opposite->speed = speed;
 
     // 현재 설정된 논리 방향(DIRECTION_FORWARD/BACKWARD)에 맞춰 속도(PWM)를 갱신합니다.
-    DRV8833_PWM_SetSpeed(motor, target->direction, speed);
+    DRV8833_PWM_SetSpeed(motor, dir_main, speed);
+    DRV8833_PWM_SetSpeed(motor, dir_opposite, 0);
 }
