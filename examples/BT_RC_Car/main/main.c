@@ -176,7 +176,7 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
                 if (c == '\n' || c == '\r') {
                     if (rx_idx > 0) {
                         rx_buf[rx_idx] = '\0';
-                        printf("%s\n", rx_buf);
+                        printf("%s\n", rx_buf); //디버깅용
                         parse_packet(rx_buf);
                         rx_idx = 0;
                     }

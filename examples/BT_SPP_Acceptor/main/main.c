@@ -16,7 +16,7 @@ static const char *TAG = "BT_ECHO";
 // SPP 이벤트 콜백 핸들러
 static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
     switch (event) {
-        case ESP_SPP_INIT_EVT:
+            case ESP_SPP_INIT_EVT:
             // SPP 초기화 완료 이벤트
             // SPP 프로필이 메모리에 정상적으로 로드됨
             ESP_LOGI(TAG, "ESP_SPP_INIT_EVT: Starting Server");

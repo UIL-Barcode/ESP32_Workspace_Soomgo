@@ -1,0 +1,2 @@
+가상환경에 필요한 명령어 모음 (260510)
+pip install -r requirements.txt
