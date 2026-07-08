@@ -1,0 +1,106 @@
+{
+  "prefix": "!",
+  "commands": {
+    "조회": {
+      "종목": {
+        "handler": "get_stock_price",
+        "description": "종목 현재가 조회 (코드 또는 종목명)",
+        "args": [
+          { "name": "종목", "type": "string", "required": true }
+        ],
+        "example": "!조회 종목 삼성전자"
+      },
+      "보유": {
+        "handler": "get_holdings",
+        "description": "보유 종목·잔고 조회",
+        "args": [],
+        "example": "!조회 보유"
+      },
+      "종목갱신": {
+        "handler": "refresh_symbols",
+        "description": "종목코드 캐시 갱신 (ka10101)",
+        "args": [],
+        "example": "!조회 종목갱신"
+      }
+    },
+    "매도": {
+      "_self": {
+        "handler": "sell_order",
+        "description": "매도 주문",
+        "confirm": true,
+        "args": [
+          { "name": "종목", "type": "string", "required": true },
+          { "name": "수량", "type": "int", "required": true },
+          { "name": "가격", "type": "int", "required": false, "default": null }
+        ],
+        "example": "!매도 삼성전자 10"
+      }
+    },
+    "매수": {
+      "_self": {
+        "handler": "buy_order",
+        "description": "매수 주문",
+        "confirm": true,
+        "args": [
+          { "name": "종목", "type": "string", "required": true },
+          { "name": "수량", "type": "int", "required": true },
+          { "name": "가격", "type": "int", "required": false, "default": null }
+        ],
+        "example": "!매수 005930 10 72000"
+      }
+    },
+    "알고리즘": {
+      "목록": {
+        "handler": "algo_list",
+        "description": "등록된 알고리즘 목록",
+        "args": [],
+        "example": "!알고리즘 목록"
+      },
+      "조회": {
+        "handler": "algo_show",
+        "description": "알고리즘 파라미터 조회",
+        "args": [
+          { "name": "알고리즘", "type": "string", "required": true }
+        ],
+        "example": "!알고리즘 조회 이동평균"
+      },
+      "파라미터": {
+        "handler": "algo_set_param",
+        "description": "파라미터 값 변경",
+        "confirm": true,
+        "arg_mode": "flexible",
+        "example": "!알고리즘 파라미터 이동평균 단기 10"
+      }
+    },
+    "실행": {
+      "현재": {
+        "handler": "run_live",
+        "description": "현재 시점 데이터로 알고리즘 신호 확인",
+        "args": [
+          { "name": "종목", "type": "string", "required": true },
+          { "name": "알고리즘", "type": "string", "required": true }
+        ],
+        "example": "!실행 현재 삼성전자 이동평균"
+      },
+      "과거": {
+        "handler": "run_simulation",
+        "description": "과거 구간 시뮬 → 엑셀 저장",
+        "args": [
+          { "name": "종목", "type": "string", "required": true },
+          { "name": "알고리즘", "type": "string", "required": true },
+          { "name": "시작일", "type": "string", "required": true },
+          { "name": "종료일", "type": "string", "required": true }
+        ],
+        "example": "!실행 과거 005930 이동평균 20240101 20241231"
+      }
+    },
+    "도움말": {
+      "_self": {
+        "handler": "show_help",
+        "description": "명령 목록 출력",
+        "args": [],
+        "example": "!도움말"
+      }
+    }
+  }
+}

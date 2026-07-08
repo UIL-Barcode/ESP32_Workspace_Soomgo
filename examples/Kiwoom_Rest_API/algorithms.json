@@ -1,0 +1,47 @@
+{
+  "algorithms": {
+    "이동평균": {
+      "description": "단기/장기 이동평균 크로스",
+      "strategy": "moving_average",
+      "params": {
+        "단기": {
+          "value": 5,
+          "type": "int",
+          "writable": true
+        },
+        "장기": {
+          "value": 20,
+          "type": "int",
+          "writable": true
+        },
+        "손절": {
+          "value": 3.0,
+          "type": "float",
+          "unit": "%",
+          "writable": true
+        }
+      }
+    },
+    "RSI": {
+      "description": "RSI 과매수/과매도",
+      "strategy": "rsi",
+      "params": {
+        "기간": {
+          "value": 14,
+          "type": "int",
+          "writable": true
+        },
+        "과매도": {
+          "value": 30,
+          "type": "int",
+          "writable": true
+        },
+        "과매수": {
+          "value": 70,
+          "type": "int",
+          "writable": true
+        }
+      }
+    }
+  }
+}

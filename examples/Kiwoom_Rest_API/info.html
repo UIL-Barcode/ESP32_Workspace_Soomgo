@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REST API 주식 자동매매 파이프라인 및 통신 원리</title>
+    <style>
+        body {
+            font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            line-height: 1.6;
+            color: #2c3e50;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 30px;
+            background-color: #f4f7f6;
+        }
+        .container {
+            background: #fff;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #1a202c;
+            text-align: center;
+            border-bottom: 3px solid #3182ce;
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+        h2 {
+            color: #2b6cb0;
+            margin-top: 40px;
+            padding-left: 10px;
+            border-left: 4px solid #3182ce;
+            display: flex;
+            align-items: center;
+        }
+        .step-box {
+            background-color: #fdfefe;
+            border: 1px solid #e5e8e8;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        .step-number {
+            display: inline-block;
+            background-color: #34495e;
+            color: white;
+            width: 30px;
+            height: 30px;
+            text-align: center;
+            line-height: 30px;
+            border-radius: 50%;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        .flow-arrow {
+            text-align: center;
+            font-size: 24px;
+            color: #bdc3c7;
+            margin: 10px 0;
+        }
+        .badge {
+            font-size: 14px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-right: 10px;
+            color: white;
+        }
+        .get-badge { background-color: #38a169; }
+        .post-badge { background-color: #e53e3e; }
+        pre {
+            background: #1a202c;
+            color: #edf2f7;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-top: 15px;
+            margin-bottom: 25px;
+        }
+        .comment { color: #718096; font-style: italic; }
+        .keyword { color: #63b3ed; }
+        .string { color: #f6ad55; }
+        .desc-box {
+            background-color: #ebf8ff;
+            border-left: 5px solid #3182ce;
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 5px 5px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+        }
+        th, td {
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        th { background-color: #edf2f7; color: #2d3748; }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        .highlight {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>주식 자동매매 시스템 전체 동작 원리 및 API 통신 매커니즘</h1>
+    <p style="text-align: center; color: #7f8c8d; margin-bottom: 40px;">
+        프로그램이 켜진 후 종료될 때까지의 거시적인 흐름(파이프라인)과 각 단계에서 발생하는 데이터 통신(GET/POST)의 세부 원리를 알아봅시다.
+    </p>
+
+    <h2 style="border:none; padding:0; margin-bottom: 20px; color:#1a202c;">제 1부: 자동매매 파이프라인 (거시적 흐름)</h2>
+    
+    <div class="step-box">
+        <h3><span class="step-number">1</span> 인가 및 인증 (Authentication)</h3>
+        <p>프로그램이 증권사 서버에 접근하기 위해 가장 먼저 출입증(Access Token)을 발급받는 단계입니다.</p>
+        <ul>
+            <li>동작: App Key와 Secret Key를 증권사 서버로 전송 (POST 요청)</li>
+            <li>결과: 유효기간이 있는 토큰을 발급받아 프로그램 메모리에 저장</li>
+        </ul>
+    </div>
+
+    <div class="flow-arrow">⬇</div>
+
+    <div class="step-box">
+        <h3><span class="step-number">2</span> 기초 데이터 수집 (Data Fetching)</h3>
+        <p>매매 결정을 내리기 위해 현재 시장 상황과 내 지갑 사정을 파악하는 단계입니다.</p>
+        <ul>
+            <li>계좌 조회: 주문 가능한 예수금, 보유 종목의 수익률 확인</li>
+            <li>시세 조회: 타겟 종목(예: 삼성전자)의 현재가, 호가 잔량, 차트 데이터 수집 (GET 요청)</li>
+        </ul>
+    </div>
+
+    <div class="flow-arrow">⬇</div>
+
+    <div class="step-box">
+        <h3><span class="step-number">3</span> 전략 및 알고리즘 판단 (Strategy)</h3>
+        <p>가져온 데이터를 바탕으로 파이썬 내부에서 논리적 계산을 수행하여 매매 여부를 결정합니다. (통신 없음)</p>
+        <ul>
+            <li>예시: "현재가가 이동평균선을 돌파했는가?" -> <span class="highlight">True (매수 결정)</span></li>
+        </ul>
+    </div>
+
+    <div class="flow-arrow">⬇</div>
+
+    <div class="step-box">
+        <h3><span class="step-number">4</span> 주문 실행 (Order Execution)</h3>
+        <p>매수/매도 결론이 났다면, 증권사 서버에 주문 명령을 전송하여 거래를 성사시킵니다.</p>
+        <ul>
+            <li>동작: 계좌번호, 종목코드, 주문수량 등을 포장하여 서버로 전송 (POST 요청)</li>
+            <li>결과: 주문 접수 번호를 파이썬으로 반환</li>
+        </ul>
+    </div>
+
+    <div class="flow-arrow">⬇</div>
+
+    <div class="step-box">
+        <h3><span class="step-number">5</span> 모니터링 및 루프 (Monitoring & Loop)</h3>
+        <p>프로그램이 종료될 때까지 2단계 ~ 4단계를 무한히 반복하며 체결 상태를 확인하고 에러를 관리합니다.</p>
+    </div>
+
+    <hr style="margin: 50px 0; border: 1px solid #e2e8f0;">
+
+    <h2 style="border:none; padding:0; margin-bottom: 20px; color:#1a202c;">제 2부: API 통신 매커니즘 (미시적 원리)</h2>
+
+    <div class="section">
+        <h2><span class="badge get-badge">GET</span> 시세 조회 (데이터 읽기)</h2>
+        <div class="desc-box">
+            특징: 서버에 저장된 데이터를 가져오기만 하는 요청입니다. 주소(URL) 뒤에 필요한 정보를 나열합니다. (파이프라인 2단계 적용)
+        </div>
+
+        <pre>
+<span class="comment">// 가상 주소 (Request URL)</span>
+[https://openapi.kiwoom.com/uapi/v1/quotations/inquire-price](https://openapi.kiwoom.com/uapi/v1/quotations/inquire-price)
+?FID_COND_MRKT_DIV_CODE=<span class="keyword">J</span>           <span class="comment">// J: 주식시장</span>
+&FID_INPUT_ISCD=<span class="string">005930</span>                  <span class="comment">// 005930: 삼성전자</span>
+
+<span class="comment">// 서버 응답 데이터 (Response JSON)</span>
+{
+    <span class="string">"rt_cd"</span>: <span class="string">"0"</span>,                       <span class="comment">// 0: 성공</span>
+    <span class="string">"msg1"</span>: <span class="string">"정상 처리되었습니다"</span>,
+    <span class="string">"output"</span>: {
+        <span class="string">"stck_prpr"</span>: <span class="string">"78500"</span>,           <span class="comment">// 현재가</span>
+        <span class="string">"acml_vol"</span>: <span class="string">"1245000"</span>           <span class="comment">// 누적 거래량</span>
+    }
+}
+        </pre>
+    </div>
+
+    <div class="section">
+        <h2><span class="badge post-badge">POST</span> 매수/매도 주문 (명령 내리기)</h2>
+        <div class="desc-box">
+            특징: 서버의 상태를 변경하는 요청입니다. 민감한 정보는 주소에 노출하지 않고 'Body' 영역에 숨겨 보냅니다. (파이프라인 1, 4단계 적용)
+        </div>
+
+        <pre>
+<span class="comment">// 보내는 데이터 (Request Body JSON)</span>
+{
+    <span class="string">"CANO"</span>: <span class="string">"12345678"</span>,                 <span class="comment">// 계좌번호 8자리</span>
+    <span class="string">"PDNO"</span>: <span class="string">"005930"</span>,                   <span class="comment">// 종목코드</span>
+    <span class="string">"ORD_DVSN"</span>: <span class="string">"00"</span>,                   <span class="comment">// 00: 지정가</span>
+    <span class="string">"ORD_QTY"</span>: <span class="string">"10"</span>,                    <span class="comment">// 주문 수량</span>
+    <span class="string">"ORD_UNPR"</span>: <span class="string">"78000"</span>                 <span class="comment">// 주문 가격</span>
+}
+
+<span class="comment">// 주문 결과 응답 (Response JSON)</span>
+{
+    <span class="string">"rt_cd"</span>: <span class="string">"0"</span>,
+    <span class="string">"msg1"</span>: <span class="string">"주문이 성공적으로 접수되었습니다"</span>,
+    <span class="string">"output"</span>: {
+        <span class="string">"ODNO"</span>: <span class="string">"0000000123"</span>,           <span class="comment">// 주문 번호</span>
+        <span class="string">"ORD_TMD"</span>: <span class="string">"103015"</span>             <span class="comment">// 체결 시각</span>
+    }
+}
+        </pre>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>항목</th>
+                <th>GET (조회)</th>
+                <th>POST (명령)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>목적</td>
+                <td>데이터 읽기</td>
+                <td>데이터 쓰기/변경</td>
+            </tr>
+            <tr>
+                <td>보안성</td>
+                <td>낮음 (파라미터 노출)</td>
+                <td>높음 (Body에 암호화)</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+</body>
+</html>
