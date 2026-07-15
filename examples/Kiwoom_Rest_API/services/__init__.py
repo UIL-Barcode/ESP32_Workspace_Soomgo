@@ -36,7 +36,7 @@ def build_services(
         query=QueryService(kiwoom, config.practice_mode),
         order=OrderService(kiwoom, notifier, config),
         algo=algo_service,
-        schedule=ScheduleService(config_service),
+        schedule=ScheduleService(config_service, config.schedules_file, algo_service),
         run=RunService(kiwoom, algo_service, config.output_dir),
         config=config_service,
         symbol=SymbolService(kiwoom, config),

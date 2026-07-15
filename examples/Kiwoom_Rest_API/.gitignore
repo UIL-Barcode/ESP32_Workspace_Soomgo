@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .env
 output/
+state/
 data/stock_symbols.json
 *.xlsx
 .vscode/launch.json

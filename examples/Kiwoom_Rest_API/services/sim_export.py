@@ -24,6 +24,10 @@ def save_simulation_excel(result: SimulationResult, output_dir: Path) -> Path:
         ("종료일", result.end_date),
         ("봉 개수", result.candle_count),
         ("매매 횟수", len(result.trades)),
+        ("라운드트립 횟수", result.round_trip_count),
+        ("누적 수익률(%)", result.total_return_pct),
+        ("승률(%)", result.win_rate_pct),
+        ("최대낙폭 MDD(%)", result.max_drawdown_pct),
         ("최종 신호", result.final_signal.signal),
         ("최종 사유", result.final_signal.reason),
     ]
@@ -42,9 +46,11 @@ def save_simulation_excel(result: SimulationResult, output_dir: Path) -> Path:
             summary.append([key, value])
 
     trades = wb.create_sheet("매매")
-    trades.append(["일자", "구분", "가격", "사유"])
+    trades.append(["일자", "구분", "가격", "수익률(%)", "사유"])
     for trade in result.trades:
-        trades.append([trade.date, trade.side, trade.price, trade.reason])
+        trades.append(
+            [trade.date, trade.side, trade.price, trade.return_pct, trade.reason]
+        )
 
     wb.save(path)
     return path

@@ -94,6 +94,39 @@
         "example": "!실행 과거 005930 이동평균 20240101 20241231"
       }
     },
+    "스케줄": {
+      "목록": {
+        "handler": "schedule_list",
+        "description": "등록된 스케줄 목록",
+        "args": [],
+        "example": "!스케줄 목록"
+      },
+      "등록": {
+        "handler": "schedule_add",
+        "description": "스케줄 등록 (recurring: 종목 알고리즘 HH:MM [요일1,요일2,...] / once: 종목 알고리즘 YYYY-MM-DDTHH:MM)",
+        "confirm": true,
+        "arg_mode": "raw",
+        "example": "!스케줄 등록 recurring 005930 이동평균 09:05 mon,tue,wed,thu,fri"
+      },
+      "중지": {
+        "handler": "schedule_disable",
+        "description": "스케줄 비활성화",
+        "confirm": true,
+        "args": [
+          { "name": "스케줄ID", "type": "string", "required": true }
+        ],
+        "example": "!스케줄 중지 sched_001"
+      },
+      "삭제": {
+        "handler": "schedule_delete",
+        "description": "스케줄 삭제",
+        "confirm": true,
+        "args": [
+          { "name": "스케줄ID", "type": "string", "required": true }
+        ],
+        "example": "!스케줄 삭제 sched_001"
+      }
+    },
     "도움말": {
       "_self": {
         "handler": "show_help",

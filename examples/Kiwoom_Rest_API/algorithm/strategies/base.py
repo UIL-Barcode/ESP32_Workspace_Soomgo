@@ -17,6 +17,7 @@ class TradeEvent:
     side: str  # buy / sell
     price: int
     reason: str = ""
+    return_pct: float | None = None  # sell 시점에만 설정 (직전 buy 대비 수익률)
 
 
 @dataclass
@@ -31,6 +32,10 @@ class SimulationResult:
     trades: list[TradeEvent]
     final_signal: SignalResult
     excel_path: str = ""
+    total_return_pct: float = 0.0
+    win_rate_pct: float = 0.0
+    max_drawdown_pct: float = 0.0
+    round_trip_count: int = 0
 
 
 class Strategy(Protocol):
@@ -50,4 +55,8 @@ class Strategy(Protocol):
         params: dict[str, Any],
     ) -> tuple[list[TradeEvent], SignalResult]:
         """전체 구간 시뮬. 반환: (트레이드, 최종 신호)."""
+        ...
+
+    def warmup_bars(self, params: dict[str, Any]) -> int:
+        """evaluate/simulate에 필요한 최소 선행 봉 수 (버퍼 포함)."""
         ...

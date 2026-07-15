@@ -48,6 +48,9 @@ class RsiStrategy:
             indicators=indicators,
         )
 
+    def warmup_bars(self, params: dict[str, Any]) -> int:
+        return int(params["기간"]) + 5
+
     def simulate(
         self,
         candles: list[Candle],

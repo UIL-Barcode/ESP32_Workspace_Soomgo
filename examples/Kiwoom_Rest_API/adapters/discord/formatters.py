@@ -1,6 +1,7 @@
 from models.order import OrderResult
 from models.query import HoldingsSnapshot, StockQuote
 from models.algo import AlgorithmSpec, ParamChangeResult
+from models.schedule import ScheduleSpec
 from algorithm.strategies.base import SignalResult, SimulationResult
 
 
@@ -142,6 +143,40 @@ def format_live_signal(stock_code: str, algorithm_id: str, signal: SignalResult)
     return "\n".join(lines)
 
 
+def _schedule_timing(spec: ScheduleSpec) -> str:
+    if spec.type == "recurring":
+        days = ",".join(spec.days or [])
+        return f"매주 {days} {spec.time}"
+    return f"1회 {spec.run_at}"
+
+
+def format_schedule_list(schedules: list[ScheduleSpec]) -> str:
+    lines = ["========================================", "[스케줄 목록]"]
+    if not schedules:
+        lines.append("등록된 스케줄이 없습니다.")
+    else:
+        for spec in schedules:
+            state = "활성" if spec.enabled else "중지"
+            lines.append(f"• {spec.id} [{state}] {spec.stock_code} · {spec.algorithm_id}")
+            lines.append(f"  {_schedule_timing(spec)}")
+            if spec.last_run:
+                lines.append(f"  마지막 실행: {spec.last_run}")
+    lines.append("========================================")
+    return "\n".join(lines)
+
+
+def format_schedule_detail(spec: ScheduleSpec, title: str) -> str:
+    return (
+        "========================================\n"
+        f"{title}\n"
+        f"스케줄ID : {spec.id}\n"
+        f"종목코드 : {spec.stock_code}\n"
+        f"알고리즘 : {spec.algorithm_id}\n"
+        f"실행시점 : {_schedule_timing(spec)}\n"
+        "========================================"
+    )
+
+
 def format_simulation_result(result: SimulationResult) -> str:
     label = _SIGNAL_LABEL.get(result.final_signal.signal, result.final_signal.signal)
     return (
@@ -151,7 +186,8 @@ def format_simulation_result(result: SimulationResult) -> str:
         f"알고리즘 : {result.algorithm_id}\n"
         f"구간     : {result.start_date} ~ {result.end_date}\n"
         f"봉 개수  : {result.candle_count}\n"
-        f"매매 횟수: {len(result.trades)}\n"
+        f"매매 횟수: {len(result.trades)} (라운드트립 {result.round_trip_count})\n"
+        f"누적수익률: {result.total_return_pct}% / 승률: {result.win_rate_pct}% / MDD: {result.max_drawdown_pct}%\n"
         f"최종 신호: {label}\n"
         f"파일     : {result.excel_path}\n"
         "========================================"

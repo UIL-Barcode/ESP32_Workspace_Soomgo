@@ -50,6 +50,9 @@ class MovingAverageStrategy:
             indicators=indicators,
         )
 
+    def warmup_bars(self, params: dict[str, Any]) -> int:
+        return int(params["장기"]) + 5
+
     def simulate(
         self,
         candles: list[Candle],

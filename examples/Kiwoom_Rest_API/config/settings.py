@@ -27,6 +27,9 @@ class Config:
     output_dir: Path
     symbol_cache_max_age_hours: int
     confirm_timeout: int
+    bot_status_file: Path
+    status_publish_interval_sec: int
+    scheduler_poll_interval_sec: int
 
     @classmethod
     def load(cls) -> "Config":
@@ -75,6 +78,15 @@ class Config:
                 os.environ.get("SYMBOL_CACHE_MAX_AGE_HOURS", "24")
             ),
             confirm_timeout=int(os.environ.get("CONFIRM_TIMEOUT", "60")),
+            bot_status_file=_ROOT / os.environ.get(
+                "BOT_STATUS_FILE", "state/bot_status.json"
+            ),
+            status_publish_interval_sec=int(
+                os.environ.get("STATUS_PUBLISH_INTERVAL_SEC", "10")
+            ),
+            scheduler_poll_interval_sec=int(
+                os.environ.get("SCHEDULER_POLL_INTERVAL_SEC", "30")
+            ),
         )
 
     def is_allowed_discord(self, channel_id: int, user_id: int) -> bool:

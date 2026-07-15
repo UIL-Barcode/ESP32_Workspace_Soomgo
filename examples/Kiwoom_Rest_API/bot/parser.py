@@ -103,8 +103,11 @@ def resolve_command(commands_root: dict[str, Any], tokens: list[str]) -> ParsedC
 
     arg_tokens = tokens[i:]
     try:
-        if node.get("arg_mode") == "flexible":
+        arg_mode = node.get("arg_mode")
+        if arg_mode == "flexible":
             kwargs = _parse_flexible_args(node, arg_tokens)
+        elif arg_mode == "raw":
+            kwargs = {"tokens": arg_tokens}
         else:
             kwargs = _parse_args(node.get("args", []), arg_tokens)
     except ValueError as e:
